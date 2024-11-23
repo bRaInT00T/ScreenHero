@@ -1,10 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Button } from 'react-native';
-import tasksData from '../data/tasks';
+import { database } from '../firebaseConfig'; // Import the initialized Firebase database
+import { ref, onValue } from 'firebase/database';
 
 const HomeScreen = ({ navigation }) => {
-  const [tasks, setTasks] = useState(tasksData);
+  const [tasks, setTasks] = useState([]);
 
+  // Fetch tasks from Firebase when the component mounts or updates
+  useEffect(() => {
+    const tasksRef = ref(database, '/tasks'); // Reference to the tasks in Firebase
+
+    // Listener to update tasks dynamically
+    const unsubscribe = onValue(tasksRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const formattedTasks = Object.keys(data).map((key) => ({
+          id: key,
+          ...data[key],
+        }));
+        setTasks(formattedTasks);
+      } else {
+        setTasks([]); // If no tasks exist, reset state to an empty array
+      }
+    },
+    (error) => {
+      console.error('Error fetching tasks:', error); // Log any errors
+    }
+  );
+
+  return () => unsubscribe(); // Cleanup the listener on unmount
+}, []);
+
+  // Calculate total points
+  const totalPoints = tasks
+    .filter((task) => task.completed) // Sum only completed tasks
+    .reduce((sum, task) => sum + task.points, 0);
+
+  // Toggle task completion
   const toggleTaskCompletion = (id) => {
     setTasks((prevTasks) =>
       prevTasks.map((task) =>
@@ -12,10 +44,6 @@ const HomeScreen = ({ navigation }) => {
       )
     );
   };
-
-  const totalPoints = tasks
-    .filter((task) => task.completed)
-    .reduce((sum, task) => sum + task.points, 0);
 
   return (
     <View style={styles.container}>
@@ -32,8 +60,8 @@ const HomeScreen = ({ navigation }) => {
             ]}
             onPress={() => toggleTaskCompletion(item.id)}
           >
-            <Text>{item.name}</Text>
-            <Text>{item.points} pts</Text>
+            <Text style={styles.taskName}>{item.name}</Text>
+            <Text style={styles.taskPoints}>{item.points} pts</Text>
           </TouchableOpacity>
         )}
       />
@@ -59,6 +87,8 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   completedTask: { backgroundColor: '#d4f7d4' },
+  taskName: { fontSize: 16 },
+  taskPoints: { fontSize: 16, color: 'gray' },
   navigationButtons: { marginTop: 20 },
 });
 
