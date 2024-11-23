@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, FlatList, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Button, FlatList, StyleSheet, Alert } from 'react-native';
 import database from '@react-native-firebase/database';
+import firebaseApp from '../firebaseConfig';
 
 const EditTasksScreen = () => {
   const [tasks, setTasks] = useState([]);
@@ -9,34 +10,57 @@ const EditTasksScreen = () => {
 
   // Fetch tasks from Firebase Realtime Database
   useEffect(() => {
+    if (!firebaseApp) {
+      console.error('Firebase not initialized');
+      return;
+    }
+
     const tasksRef = database().ref('/tasks');
-    const onValueChange = tasksRef.on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const formattedTasks = Object.keys(data).map((key) => ({
-          id: key,
-          ...data[key],
-        }));
-        setTasks(formattedTasks);
-      } else {
-        setTasks([]);
+    const onValueChange = tasksRef.on('value',(snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const formattedTasks = Object.keys(data).map((key) => ({
+            id: key,
+            ...data[key],
+          }));
+          setTasks(formattedTasks);
+        } else {
+          setTasks([]);
+        }
+      },
+      (error) => {
+        console.error('Failed to fetch tasks:', error);
       }
-    });
+    );
 
     return () => tasksRef.off('value', onValueChange);
   }, []);
 
   // Add a new task
-  const addTask = () => {
-    if (newTaskName.trim() && newTaskPoints.trim()) {
-      const newTask = {
-        name: newTaskName,
-        points: parseInt(newTaskPoints, 10),
-        completed: false,
-      };
-      database().ref('/tasks').push(newTask);
+  const addTask = async () => {
+    const points = parseInt(newTaskPoints, 10);
+
+    if (!newTaskName.trim()) {
+      Alert.alert('Error', 'Task name cannot be empty');
+      return;
+    }
+    if (isNaN(points) || points <= 0) {
+      Alert.alert('Error', 'Points must be a positive number');
+      return;
+    }
+
+    const newTask = {
+      name: newTaskName.trim(),
+      points,
+      completed: false,
+    };
+
+    try {
+      await database().ref('/tasks').push(newTask);
       setNewTaskName('');
       setNewTaskPoints('');
+    } catch (error) {
+      console.error('Failed to add task:', error);
     }
   };
 
