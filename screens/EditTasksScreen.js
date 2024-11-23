@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  FlatList,
+  StyleSheet,
+  Alert,
+  TouchableOpacity,
+  Modal,
+} from 'react-native';
 import { database } from '../firebaseConfig';
 import { ref, onValue, push, remove, update } from 'firebase/database';
 
@@ -8,6 +18,7 @@ const EditTasksScreen = () => {
   const [editingTask, setEditingTask] = useState(null); // Task being edited
   const [newTaskName, setNewTaskName] = useState('');
   const [newTaskPoints, setNewTaskPoints] = useState('');
+  const [modalVisible, setModalVisible] = useState(false);
 
   // Fetch tasks from Firebase
   useEffect(() => {
@@ -70,16 +81,26 @@ const EditTasksScreen = () => {
 
     setNewTaskName('');
     setNewTaskPoints('');
+    setModalVisible(false); // Close modal
   };
 
   // Delete a task
-  const handleDeleteTask = async (id) => {
-    try {
-      await remove(ref(database, `/tasks/${id}`));
-    } catch (error) {
-      console.error('Failed to delete task:', error);
-      Alert.alert('Error', 'Failed to delete task. Please try again.');
-    }
+  const handleDeleteTask = (id) => {
+    Alert.alert('Confirm Deletion', 'Are you sure you want to delete this task?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await remove(ref(database, `/tasks/${id}`));
+          } catch (error) {
+            console.error('Failed to delete task:', error);
+            Alert.alert('Error', 'Failed to delete task. Please try again.');
+          }
+        },
+      },
+    ]);
   };
 
   // Start editing a task
@@ -87,6 +108,7 @@ const EditTasksScreen = () => {
     setEditingTask(task);
     setNewTaskName(task.name);
     setNewTaskPoints(task.points.toString());
+    setModalVisible(true); // Open modal for editing
   };
 
   return (
@@ -108,31 +130,54 @@ const EditTasksScreen = () => {
           </View>
         )}
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Task Name"
-        value={newTaskName}
-        onChangeText={setNewTaskName}
+      <Button
+        title="Add New Task"
+        onPress={() => {
+          setEditingTask(null);
+          setNewTaskName('');
+          setNewTaskPoints('');
+          setModalVisible(true); // Open modal for new task
+        }}
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Points"
-        keyboardType="numeric"
-        value={newTaskPoints}
-        onChangeText={setNewTaskPoints}
-      />
-      <Button title={editingTask ? 'Update Task' : 'Add Task'} onPress={handleSaveTask} />
-      {editingTask && (
-        <Button
-          title="Cancel Editing"
-          onPress={() => {
-            setEditingTask(null);
-            setNewTaskName('');
-            setNewTaskPoints('');
-          }}
-          color="gray"
-        />
-      )}
+      {/* Task Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalHeader}>{editingTask ? 'Edit Task' : 'Add Task'}</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Task Name"
+              value={newTaskName}
+              onChangeText={setNewTaskName}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Points"
+              keyboardType="numeric"
+              value={newTaskPoints}
+              onChangeText={setNewTaskPoints}
+            />
+            <View style={styles.modalButtons}>
+              <Button title="Save" onPress={handleSaveTask} />
+              <Button
+                title="Cancel"
+                onPress={() => {
+                  setModalVisible(false);
+                  setEditingTask(null);
+                  setNewTaskName('');
+                  setNewTaskPoints('');
+                }}
+                color="gray"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -147,10 +192,26 @@ const styles = StyleSheet.create({
     padding: 10,
     borderBottomWidth: 1,
     borderColor: '#ddd',
+    marginBottom: 10,
+    borderRadius: 5,
+    backgroundColor: '#f9f9f9',
   },
   taskName: { fontSize: 16 },
   taskPoints: { fontSize: 16, color: 'gray' },
   taskActions: { flexDirection: 'row', gap: 10 },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    width: '80%',
+    padding: 20,
+    backgroundColor: 'white',
+    borderRadius: 10,
+  },
+  modalHeader: { fontSize: 20, fontWeight: 'bold', marginBottom: 20 },
   input: {
     borderWidth: 1,
     borderColor: '#ddd',
@@ -158,6 +219,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderRadius: 5,
   },
+  modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
 });
 
 export default EditTasksScreen;
