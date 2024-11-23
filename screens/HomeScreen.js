@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Button } from 'react-native';
 import { database } from '../firebaseConfig'; // Import the initialized Firebase database
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, update } from 'firebase/database';
 
 const HomeScreen = ({ navigation }) => {
   const [tasks, setTasks] = useState([]);
@@ -11,25 +11,27 @@ const HomeScreen = ({ navigation }) => {
     const tasksRef = ref(database, '/tasks'); // Reference to the tasks in Firebase
 
     // Listener to update tasks dynamically
-    const unsubscribe = onValue(tasksRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        const formattedTasks = Object.keys(data).map((key) => ({
-          id: key,
-          ...data[key],
-        }));
-        setTasks(formattedTasks);
-      } else {
-        setTasks([]); // If no tasks exist, reset state to an empty array
+    const unsubscribe = onValue(
+      tasksRef,
+      (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const formattedTasks = Object.keys(data).map((key) => ({
+            id: key,
+            ...data[key],
+          }));
+          setTasks(formattedTasks);
+        } else {
+          setTasks([]); // If no tasks exist, reset state to an empty array
+        }
+      },
+      (error) => {
+        console.error('Error fetching tasks:', error); // Log any errors
       }
-    },
-    (error) => {
-      console.error('Error fetching tasks:', error); // Log any errors
-    }
-  );
+    );
 
-  return () => unsubscribe(); // Cleanup the listener on unmount
-}, []);
+    return () => unsubscribe(); // Cleanup the listener on unmount
+  }, []);
 
   // Calculate total points
   const totalPoints = tasks
@@ -37,12 +39,21 @@ const HomeScreen = ({ navigation }) => {
     .reduce((sum, task) => sum + task.points, 0);
 
   // Toggle task completion
-  const toggleTaskCompletion = (id) => {
-    setTasks((prevTasks) =>
-      prevTasks.map((task) =>
-        task.id === id ? { ...task, completed: !task.completed } : task
-      )
-    );
+  const toggleTaskCompletion = async (id) => {
+    const task = tasks.find((task) => task.id === id);
+
+    if (task) {
+      const updatedTask = { ...task, completed: !task.completed };
+
+      try {
+        await update(ref(database, `/tasks/${id}`), { completed: updatedTask.completed }); // Update Firebase
+        setTasks((prevTasks) =>
+          prevTasks.map((t) => (t.id === id ? updatedTask : t)) // Update local state
+        );
+      } catch (error) {
+        console.error('Failed to update task:', error);
+      }
+    }
   };
 
   return (
@@ -54,10 +65,7 @@ const HomeScreen = ({ navigation }) => {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={[
-              styles.task,
-              item.completed && styles.completedTask,
-            ]}
+            style={[styles.task, item.completed && styles.completedTask]}
             onPress={() => toggleTaskCompletion(item.id)}
           >
             <Text style={styles.taskName}>{item.name}</Text>
@@ -66,8 +74,8 @@ const HomeScreen = ({ navigation }) => {
         )}
       />
       <View style={styles.navigationButtons}>
-        <Button title="Edit Tasks" onPress={() => navigation.navigate('Edit Tasks')} />
-        <Button title="Point Conversion" onPress={() => navigation.navigate('Point Conversion')} />
+        <Button title="Edit Tasks" onPress={() => navigation.navigate('EditTasksScreen')} />
+        <Button title="Point Conversion" onPress={() => navigation.navigate('PointConversionScreen')} />
       </View>
     </View>
   );
