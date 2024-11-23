@@ -1,16 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Button } from 'react-native';
-import { database } from '../firebaseConfig'; // Import the initialized Firebase database
+import { database } from '../firebaseConfig';
 import { ref, onValue, update } from 'firebase/database';
 
 const HomeScreen = ({ navigation }) => {
   const [tasks, setTasks] = useState([]);
+  const [dayType, setDayType] = useState('school');
+  const [totalAvailablePoints, setTotalAvailablePoints] = useState(0);
 
-  // Fetch tasks from Firebase when the component mounts or updates
+  const conversionRules = {
+    school: { maxHours: 3 },
+    weekend: { maxHours: 13 },
+  };
+
   useEffect(() => {
-    const tasksRef = ref(database, '/tasks'); // Reference to the tasks in Firebase
+    const currentDay = new Date().getDay();
+    if (currentDay === 0 || currentDay === 6) {
+      setDayType('weekend');
+    } else {
+      setDayType('school');
+    }
+  }, []);
 
-    // Listener to update tasks dynamically
+  useEffect(() => {
+    const tasksRef = ref(database, '/tasks');
     const unsubscribe = onValue(
       tasksRef,
       (snapshot) => {
@@ -21,34 +34,42 @@ const HomeScreen = ({ navigation }) => {
             ...data[key],
           }));
           setTasks(formattedTasks);
+          const totalPoints = formattedTasks.reduce((sum, task) => sum + task.points, 0);
+          setTotalAvailablePoints(totalPoints);
         } else {
-          setTasks([]); // If no tasks exist, reset state to an empty array
+          setTasks([]);
+          setTotalAvailablePoints(0);
         }
       },
       (error) => {
-        console.error('Error fetching tasks:', error); // Log any errors
+        console.error('Error fetching tasks:', error);
       }
     );
 
-    return () => unsubscribe(); // Cleanup the listener on unmount
+    return () => unsubscribe();
   }, []);
 
-  // Calculate total points
-  const totalPoints = tasks
-    .filter((task) => task.completed) // Sum only completed tasks
-    .reduce((sum, task) => sum + task.points, 0);
+  const totalPointsEarned = tasks.filter((task) => task.completed).reduce((sum, task) => sum + task.points, 0);
 
-  // Toggle task completion
+  const { maxHours } = conversionRules[dayType];
+  const freeHoursDecimal = Math.min(
+    (totalPointsEarned / totalAvailablePoints) * maxHours || 0,
+    maxHours
+  );
+
+  // Convert free hours decimal to total minutes, rounded to nearest 15 minutes
+  const totalMinutes = Math.round(freeHoursDecimal * 60 / 15) * 15;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
   const toggleTaskCompletion = async (id) => {
     const task = tasks.find((task) => task.id === id);
-
     if (task) {
       const updatedTask = { ...task, completed: !task.completed };
-
       try {
-        await update(ref(database, `/tasks/${id}`), { completed: updatedTask.completed }); // Update Firebase
+        await update(ref(database, `/tasks/${id}`), { completed: updatedTask.completed });
         setTasks((prevTasks) =>
-          prevTasks.map((t) => (t.id === id ? updatedTask : t)) // Update local state
+          prevTasks.map((t) => (t.id === id ? updatedTask : t))
         );
       } catch (error) {
         console.error('Failed to update task:', error);
@@ -59,7 +80,10 @@ const HomeScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Hi! Let's Earn Some Points Today!</Text>
-      <Text style={styles.totalPoints}>Total Points: {totalPoints}</Text>
+      <Text style={styles.totalPoints}>Total Points Earned: {totalPointsEarned}</Text>
+      <Text style={styles.freeHours}>
+        Free Time Earned: {hours} hours and {minutes} minutes ({dayType === 'school' ? 'School Day' : 'Weekend'})
+      </Text>
       <FlatList
         data={tasks}
         keyExtractor={(item) => item.id}
@@ -74,8 +98,8 @@ const HomeScreen = ({ navigation }) => {
         )}
       />
       <View style={styles.navigationButtons}>
-        <Button title="Edit Tasks" onPress={() => navigation.navigate('EditTasksScreen')} />
-        <Button title="Point Conversion" onPress={() => navigation.navigate('PointConversionScreen')} />
+        <Button title="Edit Tasks" onPress={() => navigation.navigate('Edit Tasks')} />
+        <Button title="Point Conversion" onPress={() => navigation.navigate('Point Conversion')} />
       </View>
     </View>
   );
@@ -84,7 +108,8 @@ const HomeScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
   header: { fontSize: 20, fontWeight: 'bold', marginBottom: 10 },
-  totalPoints: { fontSize: 16, fontWeight: 'bold', marginBottom: 20 },
+  totalPoints: { fontSize: 16, fontWeight: 'bold', marginBottom: 5 },
+  freeHours: { fontSize: 16, fontWeight: 'bold', marginBottom: 20 },
   task: {
     flexDirection: 'row',
     justifyContent: 'space-between',
